@@ -13,10 +13,16 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @NoArgsConstructor
 public class Attachment {
+    static final int BUFFER_SIZE = 8192;
+
+    {
+        this.setIn(ByteBuffer.allocate(BUFFER_SIZE));
+        this.setState(State.AUTH);
+    }
+
     SelectionKey key;
     int port;
     State state;
-    //Ответ клиенту
     ByteBuffer reply;
     ByteBuffer in;
     ByteBuffer out;
@@ -26,5 +32,4 @@ public class Attachment {
 enum State{
     AUTH,
     CONNECTING,
-    PROXY
 }

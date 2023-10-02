@@ -49,7 +49,6 @@ public class DNSResolver {
             List<Record> records = response.getSection(Section.ANSWER);
             Optional<ARecord> record = records.stream().filter(it -> it instanceof ARecord).limit(1)
                     .map(it -> (ARecord) it).findAny();
-            System.out.println(record.orElseThrow(UnknownHostException::new).getAddress().getHostAddress());
             byte[] address = record.orElseThrow(UnknownHostException::new).getAddress().getAddress();
             SocksProxyServer.startConnect(address, clientContextMap.remove(response.getHeader().getID()));
         } catch (IOException e){
