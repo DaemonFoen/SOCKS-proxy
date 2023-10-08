@@ -1,4 +1,4 @@
-package org.nsu;
+package org.nsu.dns;
 
 
 import java.io.IOException;
@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.nsu.proxy.Attachment;
+import org.nsu.proxy.SocksProxyServer;
 import org.xbill.DNS.ARecord;
 import org.xbill.DNS.DClass;
 import org.xbill.DNS.Flags;

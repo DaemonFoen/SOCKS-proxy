@@ -1,4 +1,4 @@
-package org.nsu;
+package org.nsu.proxy;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -8,23 +8,27 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.nsu.cli.CLI;
+import org.nsu.dns.DNSResolver;
 import org.xbill.DNS.ResolverConfig;
 
 @Log4j2
+@RequiredArgsConstructor
 public class SocksProxyServer {
-
     private DNSResolver dnsResolver;
-    static final int DNS_PORT = 53;
+    private final int DNS_PORT = 53;
+    public Selector selector;
 
-    public static Selector selector;
+    private final int port;
 
     public static void main(String[] args) {
-        SocksProxyServer server = new SocksProxyServer();
-        server.proxy(50000);
+        SocksProxyServer server = new SocksProxyServer(CLI.parse(args));
+        server.proxy();
     }
 
-    public void proxy(int proxyPort) {
+    public void proxy() {
         try {
             selector = Selector.open();
             DatagramChannel dnsChannel = DatagramChannel.open();
@@ -38,7 +42,7 @@ public class SocksProxyServer {
             dnsResolver = new DNSResolver(dnsChannel);
 
             ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-            serverSocketChannel.socket().bind(new InetSocketAddress(proxyPort));
+            serverSocketChannel.socket().bind(new InetSocketAddress(port));
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
@@ -64,12 +68,12 @@ public class SocksProxyServer {
                         }
                     }
                 } catch (IOException e) {
-                    log.error(e.getMessage());
+                    log.debug(e.getMessage());
                     closeConnection(key);
                 }
             }
         } catch (IOException e) {
-            log.error(e.getMessage());
+            log.debug(e.getMessage());
         }
     }
 
@@ -86,15 +90,15 @@ public class SocksProxyServer {
             channel = ((SocketChannel) serverKey.channel());
             Attachment attachment = ((Attachment) serverKey.attachment());
             channel.finishConnect();
-            log.info("finish connect to " + channel.getRemoteAddress());
+            log.debug("finish connect to " + channel.getRemoteAddress());
             attachment.getIn().put(attachment.getReply().put(1, (byte) 0)).flip();
             attachment.setOut(((Attachment) attachment.getDestinationKey().attachment()).getIn());
             ((Attachment) attachment.getDestinationKey().attachment()).setOut(attachment.getIn());
             attachment.getDestinationKey().interestOps(SelectionKey.OP_WRITE | SelectionKey.OP_READ);
             serverKey.interestOps(0);
         } catch (IOException e) {
-            log.error(e);
-            closeConnection(serverKey);
+            log.debug(e);
+            closeConnection(((Attachment) serverKey.attachment()).getDestinationKey());
         }
     }
 
@@ -107,7 +111,7 @@ public class SocksProxyServer {
             attachment.setKey(key);
         }
         int size = channel.read(attachment.getIn());
-        if (size < 1) {
+        if (size == -1) {
             closeConnection(key);
         } else if (attachment.getDestinationKey() == null) {
             readHeader(key, size);
@@ -144,7 +148,8 @@ public class SocksProxyServer {
         System.arraycopy(header, 0, reply, 0, size);
         clientAttachment.setReply(ByteBuffer.wrap(reply));
         if (header[0] != 0x05 && header[1] != 1) {
-            throw new IllegalStateException("Bad Request");
+            log.debug("Bad Request");
+            closeConnection(clientKey);
         }
         switch (clientAttachment.getState()) {
             case AUTH -> {
@@ -181,7 +186,7 @@ public class SocksProxyServer {
         SocketChannel destinationChannel = SocketChannel.open();
         destinationChannel.configureBlocking(false);
         destinationChannel.connect(new InetSocketAddress(InetAddress.getByAddress(address), context.getPort()));
-        log.info("start connecting to " + destinationChannel.getRemoteAddress());
+        log.debug("start connecting to " + destinationChannel.getRemoteAddress());
         SelectionKey destinationKey = destinationChannel.register(context.getKey().selector(), SelectionKey.OP_CONNECT);
         context.getKey().interestOps(0);
         ((Attachment) context.getKey().attachment()).setDestinationKey(destinationKey);
@@ -197,7 +202,7 @@ public class SocksProxyServer {
     private static void closeConnection(SelectionKey key) throws IOException {
         key.cancel();
         key.channel().close();
-        log.info("close connection");
+        log.debug("close connection");
         SelectionKey destinationKey = ((Attachment) key.attachment()).getDestinationKey();
         if (destinationKey != null) {
             ((Attachment) destinationKey.attachment()).setDestinationKey(null);
